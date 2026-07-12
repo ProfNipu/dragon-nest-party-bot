@@ -1,0 +1,22 @@
+# Secrets — never commit your bot token or client ID
+.env
+
+# Dependencies
+node_modules/
+
+# Persisted bot data (character rosters, etc.) — contains user data,
+# and regenerates automatically from src/handlers/characterManager.js
+data/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
