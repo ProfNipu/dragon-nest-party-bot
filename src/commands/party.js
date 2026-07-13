@@ -22,8 +22,8 @@ module.exports = {
         )
         .addIntegerOption((opt) =>
           opt
-            .setName("tanks")
-            .setDescription("Tank slots needed (default: 1)")
+            .setName("paladins")
+            .setDescription("Paladin slots needed (default: 1)")
             .setMinValue(0)
             .setMaxValue(10)
         )
@@ -57,8 +57,15 @@ module.exports = {
         )
         .addIntegerOption((opt) =>
           opt
+            .setName("acrobats")
+            .setDescription("Acrobat slots needed (default: 1)")
+            .setMinValue(0)
+            .setMaxValue(10)
+        )
+        .addIntegerOption((opt) =>
+          opt
             .setName("flexible")
-            .setDescription("Flexible (DPS) slots needed (default: 3)")
+            .setDescription("Flexible (DPS) slots needed (default: 2)")
             .setMinValue(0)
             .setMaxValue(20)
         )
@@ -67,6 +74,9 @@ module.exports = {
         )
         .addStringOption((opt) =>
           opt.setName("note").setDescription("Any extra info, e.g. min item level")
+        )
+        .addStringOption((opt) =>
+          opt.setName("nest_type").setDescription("Jenis Nest, misalnya 'Elite' atau 'Hard Mode'")
         )
     )
     .addSubcommand((sub) =>
@@ -90,19 +100,21 @@ module.exports = {
       const activity = interaction.options.getString("activity");
       const time = interaction.options.getString("time");
       const note = interaction.options.getString("note");
+      const nestType = interaction.options.getString("nest_type");
       const roleCaps = {
-        tank: interaction.options.getInteger("tanks") ?? 1,
+        tank: interaction.options.getInteger("paladins") ?? 1,
         healer: interaction.options.getInteger("healers") ?? 1,
         swordmaster: interaction.options.getInteger("swordmasters") ?? 1,
         mercenary: interaction.options.getInteger("mercenaries") ?? 1,
         sorceress: interaction.options.getInteger("sorceresses") ?? 1,
-        flexible: interaction.options.getInteger("flexible") ?? 3,
+        acrobat: interaction.options.getInteger("acrobats") ?? 1,
+        flexible: interaction.options.getInteger("flexible") ?? 2,
       };
 
       if (Object.values(roleCaps).every((c) => c === 0)) {
         return interaction.reply({
           content:
-            "You need at least one open role slot (tanks, healers, swordmasters, mercenaries, sorceresses, or flexible) to create a party.",
+            "You need at least one open role slot (paladins, healers, swordmasters, mercenaries, sorceresses, acrobats, or flexible) to create a party.",
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -117,6 +129,7 @@ module.exports = {
         activity,
         time,
         note,
+        nestType,
         roleCaps,
       });
 

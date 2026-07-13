@@ -6,26 +6,28 @@ const parties = new Map();
 
 // Full labels (emoji + name) shown in the embed roster fields.
 const ROLE_LABELS = {
-  tank: "🛡️ Tanks",
+  tank: "🛡️ Paladin",
   healer: "❤️ Healers",
   swordmaster: "⚔️ Swordmasters",
   mercenary: "🗡️ Mercenaries",
   sorceress: "🔮 Sorceresses",
+  acrobat: "🤸 Acrobats",
   flexible: "🔀 Flexible (DPS)",
 };
 
 // Short labels for button text — buttons have limited horizontal space,
 // especially with 5 roles in one row.
 const ROLE_BUTTON_LABELS = {
-  tank: "Tanks",
+  tank: "Paladin",
   healer: "Healers",
   swordmaster: "SM",
   mercenary: "Merc",
   sorceress: "Sorc",
+  acrobat: "Acro",
   flexible: "Flex",
 };
 
-function createParty({ messageId, channelId, leaderId, activity, time, note, roleCaps }) {
+function createParty({ messageId, channelId, leaderId, activity, time, note, nestType, roleCaps }) {
   const roles = {};
   for (const [key, cap] of Object.entries(roleCaps)) {
     if (cap > 0) {
@@ -40,6 +42,7 @@ function createParty({ messageId, channelId, leaderId, activity, time, note, rol
     activity,
     time: time || null,
     note: note || null,
+    nestType: nestType || null,
     roles,
     createdAt: Date.now(),
   };
