@@ -28,4 +28,19 @@ function getAllClassNames() {
   return ROLE_SUBCLASSES.flexible;
 }
 
-module.exports = { ROLE_SUBCLASSES, getSubclasses, hasSubclasses, getAllClassNames };
+function isClassValidForRole(className, roleKey) {
+  const subclasses = ROLE_SUBCLASSES[roleKey];
+  return subclasses ? subclasses.includes(className) : false;
+}
+
+function getRoleKeysForClass(className) {
+  const roles = [];
+  for (const [roleKey, subclasses] of Object.entries(ROLE_SUBCLASSES)) {
+    if (subclasses.includes(className)) {
+      roles.push(roleKey);
+    }
+  }
+  return roles;
+}
+
+module.exports = { ROLE_SUBCLASSES, getSubclasses, hasSubclasses, getAllClassNames, isClassValidForRole, getRoleKeysForClass };

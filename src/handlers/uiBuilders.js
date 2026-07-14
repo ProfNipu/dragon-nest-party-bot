@@ -31,7 +31,7 @@ const ROLE_CODES = {
   swordmaster: "SM",
   mercenary: "MC",
   sorceress: ["Sorce", "FU"],
-  acrobat: "Arc",
+  acrobat: "Acro",
   flexible: "DPS",
 };
 
@@ -55,8 +55,12 @@ function getRoleButtonCode(roleKey) {
 }
 
 function buildPartyEmbed(party) {
+  const dungeon = party.dungeonInfo;
+  const title = dungeon
+    ? `${dungeon.emoji} ${party.activity}`
+    : `🗡️ ${party.activity}`;
   const embed = new EmbedBuilder()
-    .setTitle(`🗡️ ${party.activity}`)
+    .setTitle(title)
     .setColor(isFull(party) ? 0x2ecc71 : 0x5865f2)
     .setFooter({
       text: isFull(party) ? "Party is full!" : "Tap a role below to join",
@@ -64,6 +68,9 @@ function buildPartyEmbed(party) {
     .setTimestamp(party.createdAt);
 
   const details = [];
+  if (dungeon) {
+    details.push(`📋 **Type:** ${dungeon.type} (Lv${dungeon.level}, ${dungeon.partySize} players)`);
+  }
   if (party.time) details.push(`🕒 **When:** ${party.time}`);
   details.push(`👑 **Leader:** <@${party.leaderId}>`);
   if (party.note) details.push(`📝 **Note:** ${party.note}`);
@@ -72,7 +79,6 @@ function buildPartyEmbed(party) {
   const totalJoined = getAllMemberIds(party).length;
   details.push(`\nStatus : ${isFull(party) ? "FULL" : "OPEN"}`);
   details.push(`Members : ${totalJoined}/${totalCap}`);
-  if (party.nestType) details.push(`Raid Nest : ${party.nestType}`);
 
   embed.setDescription(details.join("\n"));
 
@@ -82,7 +88,7 @@ function buildPartyEmbed(party) {
       const code = getSlotCode(roleKey, i, role.cap);
       const member = role.members[i];
       const value = member
-        ? `${member.subclass ? `${member.subclass} ` : ""}<@${member.userId}>`
+        ? `${member.ign || `<@${member.userId}>`}${member.subclass ? ` (${member.subclass})` : ""}`
         : "_open_";
       rosterEntries.push({ code, value });
     }

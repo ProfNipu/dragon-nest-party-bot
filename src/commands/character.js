@@ -2,6 +2,13 @@ const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require("discord.js"
 const { addCharacter, removeCharacter, getCharacters } = require("../handlers/characterManager");
 const { getAllClassNames } = require("../handlers/roleClasses");
 
+const ALLOWED_ROLES = ["Supreme Leader", "Vice", "Officer"];
+
+function memberHasAllowedRole(member) {
+  if (!member?.roles) return false;
+  return member.roles.cache.some((role) => ALLOWED_ROLES.includes(role.name));
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("character")
@@ -23,6 +30,9 @@ module.exports = {
             .setDescription("Your character's class")
             .setRequired(true)
             .addChoices(...getAllClassNames().map((name) => ({ name, value: name })))
+        )
+        .addUserOption((opt) =>
+          opt.setName("user").setDescription("Who to add the character for (defaults to you, requires Officer/Vice/Supreme Leader)")
         )
     )
     .addSubcommand((sub) =>
@@ -48,17 +58,34 @@ module.exports = {
     if (sub === "add") {
       const ign = interaction.options.getString("ign").trim();
       const className = interaction.options.getString("class");
+      const targetUser = interaction.options.getUser("user") ?? interaction.user;
 
-      const result = addCharacter(interaction.user.id, ign, className);
-      if (result === "duplicate") {
+      if (targetUser.id !== interaction.user.id && !memberHasAllowedRole(interaction.member)) {
         return interaction.reply({
-          content: `You already have a character named **${ign}** registered.`,
+          content: "❌ You need the **Officer**, **Vice**, or **Supreme Leader** role to add characters for other people.",
           flags: MessageFlags.Ephemeral,
         });
       }
 
+      const result = addCharacter(targetUser.id, ign, className);
+      if (result === "duplicate") {
+        const msg =
+          targetUser.id === interaction.user.id
+            ? `You already have a character named **${ign}** registered.`
+            : `${targetUser.username} already has a character named **${ign}** registered.`;
+        return interaction.reply({
+          content: msg,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const msg =
+        targetUser.id === interaction.user.id
+          ? `✅ Registered **${ign}** (${className}).`
+          : `✅ Registered **${ign}** (${className}) for ${targetUser.username}.`;
+
       return interaction.reply({
-        content: `✅ Registered **${ign}** (${className}).`,
+        content: msg,
         flags: MessageFlags.Ephemeral,
       });
     }

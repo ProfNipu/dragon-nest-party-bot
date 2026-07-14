@@ -20,8 +20,10 @@ const {
   ROLE_LABELS,
 } = require("./partyManager");
 const { buildPartyEmbed, buildPartyButtons, getSlotCode } = require("./uiBuilders");
-const { hasSubclasses, getSubclasses } = require("./roleClasses");
+const { hasSubclasses, getSubclasses, isClassValidForRole } = require("./roleClasses");
 const { createLoot, getLoot, markSold, markPaid } = require("./lootManager");
+const { getRemaining, addClear } = require("./limitManager");
+const { getCharacters } = require("./characterManager");
 
 // Refreshes the live party embed/buttons on the original party message.
 // Needed when the update comes from an ephemeral message (the subclass
@@ -35,17 +37,45 @@ async function refreshPartyMessage(client, party) {
   });
 }
 
-// Builds an ephemeral "choose your class" prompt using a dropdown
-// (StringSelectMenu) instead of a row of buttons.
-function buildSubclassPrompt(messageId, roleKey) {
+function buildCombinedPrompt(messageId, roleKey, chars) {
   const subclasses = getSubclasses(roleKey);
+  const options = [];
+
+  for (const c of chars) {
+    options.push({
+      label: `${c.ign} (${c.className})`,
+      description: c.className,
+      value: `char:${c.ign}|${c.className}`,
+    });
+  }
+
+  if (chars.length > 0 && subclasses.length > 0) {
+    // Visual separator — adding a disabled dummy option between char list
+    // and raw class list so users can tell them apart.
+    if (subclasses.length + options.length <= 25) {
+      options.push({
+        label: "──────────────",
+        value: "_sep",
+      });
+    }
+  }
+
+  for (const cls of subclasses) {
+    const exists = chars.some((c) => c.className === cls);
+    options.push({
+      label: exists ? `${cls} (tanpa IGN)` : cls,
+      description: exists ? `Join tanpa pilih karakter` : undefined,
+      value: `raw:${cls}`,
+    });
+  }
+
   const menu = new StringSelectMenuBuilder()
-    .setCustomId(`party:pickclass:${messageId}:${roleKey}`)
-    .setPlaceholder(`Choose your ${ROLE_LABELS[roleKey]} class`)
-    .addOptions(subclasses.map((subclass) => ({ label: subclass, value: subclass })));
+    .setCustomId(`party:pickchar:${messageId}:${roleKey}`)
+    .setPlaceholder(`Pilih karakter atau class — ${ROLE_LABELS[roleKey]}`)
+    .addOptions(options.slice(0, 25));
 
   return {
-    content: `Choose your ${ROLE_LABELS[roleKey]} class:`,
+    content: `Pilih karakter atau class buat ${ROLE_LABELS[roleKey]}:`,
     components: [new ActionRowBuilder().addComponents(menu)],
     flags: MessageFlags.Ephemeral,
   };
@@ -71,13 +101,16 @@ function buildLootRoster(party) {
       roster.push({
         code: getSlotCode(roleKey, i, role.cap),
         userId: member.userId,
+        ign: member.ign,
         subclass: member.subclass,
         paid: false,
       });
     });
   }
   if (!isMember(party, party.leaderId)) {
-    roster.push({ code: "👑", userId: party.leaderId, subclass: null, paid: false });
+    const leaderChars = getCharacters(party.leaderId);
+    const leaderIgn = leaderChars.length > 0 ? leaderChars[0].ign : null;
+    roster.push({ code: "👑", userId: party.leaderId, ign: leaderIgn, subclass: null, paid: false });
   }
   return roster;
 }
@@ -107,7 +140,7 @@ function buildLootRecapEmbed(record) {
   if (record.roster && record.roster.length > 0) {
     const maxCodeLength = Math.max(...record.roster.map((e) => e.code.length));
     const rosterLines = record.roster.map((e) => {
-      const value = e.subclass ? `${e.subclass} <@${e.userId}>` : `<@${e.userId}>`;
+      const value = e.ign || `<@${e.userId}>`;
       return `${e.code.padEnd(maxCodeLength)} : ${value}${e.paid ? " ✅" : ""}`;
     });
     embed.addFields({ name: "\u200b", value: rosterLines.join("\n"), inline: false });
@@ -175,14 +208,8 @@ async function handleButton(interaction) {
 
     const options = [];
     for (const { entry, i } of unpaidEntries.slice(0, 25)) {
-      let username = entry.userId;
-      try {
-        const user = await interaction.client.users.fetch(entry.userId);
-        username = user.username;
-      } catch (err) {
-        // If the fetch fails for some reason, fall back to showing the raw ID.
-      }
-      options.push({ label: username.slice(0, 100), value: String(i) });
+      const ign = entry.ign || entry.userId;
+      options.push({ label: ign.slice(0, 100), value: String(i) });
     }
 
     const menu = new StringSelectMenuBuilder()
@@ -242,20 +269,13 @@ async function handleButton(interaction) {
     const options = [];
     for (const [roleKey, role] of Object.entries(party.roles)) {
       for (const member of role.members) {
-        if (member.userId === party.leaderId) continue; // leader can't kick themselves this way
+        if (member.userId === party.leaderId) continue;
 
-        let username = member.userId;
-        try {
-          const user = await interaction.client.users.fetch(member.userId);
-          username = user.username;
-        } catch (err) {
-          // If the fetch fails for some reason, fall back to showing the raw ID.
-        }
-
+        const ign = member.ign || member.userId;
         const roleLabel = ROLE_LABELS[roleKey];
         const label = member.subclass
-          ? `${username} — ${roleLabel} (${member.subclass})`
-          : `${username} — ${roleLabel}`;
+          ? `${ign} — ${roleLabel} (${member.subclass})`
+          : `${ign} — ${roleLabel}`;
         options.push({ label: label.slice(0, 100), value: member.userId });
       }
     }
@@ -324,16 +344,8 @@ async function handleButton(interaction) {
   }
 
   if (action === "join") {
-    if (hasSubclasses(roleKey)) {
-      return interaction.reply(buildSubclassPrompt(party.messageId, roleKey));
-    }
-    const result = joinRole(party.messageId, interaction.user.id, roleKey);
-    if (result === "full") {
-      return interaction.reply({
-        content: "That role just filled up — try another one!",
-        flags: MessageFlags.Ephemeral,
-      });
-    }
+    const chars = getCharacters(interaction.user.id);
+    return interaction.reply(buildCombinedPrompt(party.messageId, roleKey, chars));
   } else if (action === "leave") {
     const removed = removeMember(party.messageId, interaction.user.id);
     if (!removed) {
@@ -446,15 +458,65 @@ async function handleSelectMenu(interaction) {
       // Recap message may have been deleted — not fatal, the payment is still recorded.
     }
 
+    const paidIgn = record.roster[index].ign || `<@${record.roster[index].userId}>`;
     return interaction.update({
-      content: `✅ Gaji diberikan ke <@${record.roster[index].userId}>`,
+      content: `✅ Gaji diberikan ke ${paidIgn}`,
+      components: [],
+    });
+  }
+
+  if (action === "pickchar") {
+    const [, , messageId, roleKey] = parts;
+    const raw = interaction.values[0];
+    const party = getParty(messageId);
+    if (!party) {
+      return interaction.update({ content: "This party no longer exists.", components: [] });
+    }
+
+    if (raw === "_sep") {
+      return interaction.update({ content: ".", components: [] });
+    }
+
+    let ign, className;
+    if (raw.startsWith("char:")) {
+      const parts2 = raw.slice(5).split("|");
+      ign = parts2[0];
+      className = parts2[1];
+
+      if (party.dungeonInfo?.weeklyLimit) {
+        const remaining = getRemaining(ign, party.activity, party.dungeonInfo.weeklyLimit);
+        if (remaining <= 0) {
+          return interaction.update({
+            content: `⛔ **${ign}** sudah limit **${party.activity}** minggu ini (${party.dungeonInfo.weeklyLimit}/${party.dungeonInfo.weeklyLimit}). Tunggu reset mingguan!`,
+            components: [],
+          });
+        }
+      }
+    } else {
+      ign = null;
+      className = raw.slice(4);
+    }
+
+    const result = joinRole(messageId, interaction.user.id, roleKey, className, ign);
+    if (result === "full") {
+      return interaction.update({
+        content: "That role just filled up — try another one!",
+        components: [],
+      });
+    }
+
+    await refreshPartyMessage(interaction.client, party);
+    const namePart = ign ? `**${ign}** — ` : "";
+    return interaction.update({
+      content: `Joined as ${namePart}**${className}** ${ROLE_LABELS[roleKey]}!`,
       components: [],
     });
   }
 
   if (action !== "pickclass") return;
 
-  const [, , messageId, roleKey] = parts;
+  const [, , messageId, roleKey, ignRaw] = parts;
+  const ign = ignRaw === "null" ? null : ignRaw;
   const subclass = interaction.values[0];
 
   const party = getParty(messageId);
@@ -465,7 +527,17 @@ async function handleSelectMenu(interaction) {
     });
   }
 
-  const result = joinRole(messageId, interaction.user.id, roleKey, subclass);
+  if (ign && party.dungeonInfo?.weeklyLimit) {
+    const remaining = getRemaining(ign, party.activity, party.dungeonInfo.weeklyLimit);
+    if (remaining <= 0) {
+      return interaction.update({
+        content: `⛔ **${ign}** sudah limit **${party.activity}** minggu ini (${party.dungeonInfo.weeklyLimit}/${party.dungeonInfo.weeklyLimit}). Tunggu reset mingguan!`,
+        components: [],
+      });
+    }
+  }
+
+  const result = joinRole(messageId, interaction.user.id, roleKey, subclass, ign);
   if (result === "full") {
     return interaction.update({
       content: "That role just filled up — try another one!",
@@ -474,8 +546,9 @@ async function handleSelectMenu(interaction) {
   }
 
   await refreshPartyMessage(interaction.client, party);
+  const namePart = ign ? `**${ign}** — ` : "";
   return interaction.update({
-    content: `Joined as **${subclass}** ${ROLE_LABELS[roleKey]}!`,
+    content: `Joined as ${namePart}**${subclass}** ${ROLE_LABELS[roleKey]}!`,
     components: [],
   });
 }
@@ -575,6 +648,24 @@ async function handleFinishModalSubmit(interaction) {
   // a role themselves), gets added to the loot thread.
   const memberIds = new Set(getAllMemberIds(party));
   memberIds.add(party.leaderId);
+
+  // Consume one weekly clear per IGN
+  if (party.dungeonInfo?.weeklyLimit) {
+    const igns = new Set();
+    for (const role of Object.values(party.roles)) {
+      for (const member of role.members) {
+        if (member.ign) igns.add(member.ign);
+      }
+    }
+    // Only auto-add leader's first character if leader didn't join any role
+    if (!isMember(party, party.leaderId)) {
+      const leaderChars = getCharacters(party.leaderId);
+      if (leaderChars.length > 0) igns.add(leaderChars[0].ign);
+    }
+    for (const ign of igns) {
+      addClear(ign, party.activity);
+    }
+  }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 

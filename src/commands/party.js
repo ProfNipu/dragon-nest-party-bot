@@ -5,6 +5,7 @@ const {
   rekeyParty,
 } = require("../handlers/partyManager");
 const { buildPartyEmbed, buildPartyButtons } = require("../handlers/uiBuilders");
+const { getChoices, getDungeonInfo } = require("../handlers/dungeons");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,13 +18,14 @@ module.exports = {
         .addStringOption((opt) =>
           opt
             .setName("activity")
-            .setDescription("What you're doing, e.g. 'Molten Core Raid'")
+            .setDescription("Select a dungeon or nest")
             .setRequired(true)
+            .addChoices(...getChoices())
         )
         .addIntegerOption((opt) =>
           opt
-            .setName("paladins")
-            .setDescription("Paladin slots needed (default: 1)")
+            .setName("tanks")
+            .setDescription("Tank slots needed (default: 1)")
             .setMinValue(0)
             .setMaxValue(10)
         )
@@ -75,9 +77,6 @@ module.exports = {
         .addStringOption((opt) =>
           opt.setName("note").setDescription("Any extra info, e.g. min item level")
         )
-        .addStringOption((opt) =>
-          opt.setName("nest_type").setDescription("Jenis Nest, misalnya 'Elite' atau 'Hard Mode'")
-        )
     )
     .addSubcommand((sub) =>
       sub.setName("list").setDescription("Show all active parties on this server")
@@ -98,11 +97,11 @@ module.exports = {
 
     if (sub === "create") {
       const activity = interaction.options.getString("activity");
+      const dungeonInfo = getDungeonInfo(activity);
       const time = interaction.options.getString("time");
       const note = interaction.options.getString("note");
-      const nestType = interaction.options.getString("nest_type");
       const roleCaps = {
-        tank: interaction.options.getInteger("paladins") ?? 1,
+        tank: interaction.options.getInteger("tanks") ?? 1,
         healer: interaction.options.getInteger("healers") ?? 1,
         swordmaster: interaction.options.getInteger("swordmasters") ?? 1,
         mercenary: interaction.options.getInteger("mercenaries") ?? 1,
@@ -114,7 +113,7 @@ module.exports = {
       if (Object.values(roleCaps).every((c) => c === 0)) {
         return interaction.reply({
           content:
-            "You need at least one open role slot (paladins, healers, swordmasters, mercenaries, sorceresses, acrobats, or flexible) to create a party.",
+            "You need at least one open role slot (tanks, healers, swordmasters, mercenaries, sorceresses, acrobats, or flexible) to create a party.",
           flags: MessageFlags.Ephemeral,
         });
       }
@@ -129,8 +128,8 @@ module.exports = {
         activity,
         time,
         note,
-        nestType,
         roleCaps,
+        dungeonInfo,
       });
 
       await interaction.editReply({

@@ -18,7 +18,7 @@ const ROLE_LABELS = {
 // Short labels for button text — buttons have limited horizontal space,
 // especially with 5 roles in one row.
 const ROLE_BUTTON_LABELS = {
-  tank: "Paladin",
+  tank: "PL",
   healer: "Healers",
   swordmaster: "SM",
   mercenary: "Merc",
@@ -27,7 +27,7 @@ const ROLE_BUTTON_LABELS = {
   flexible: "Flex",
 };
 
-function createParty({ messageId, channelId, leaderId, activity, time, note, nestType, roleCaps }) {
+function createParty({ messageId, channelId, leaderId, activity, time, note, roleCaps, dungeonInfo }) {
   const roles = {};
   for (const [key, cap] of Object.entries(roleCaps)) {
     if (cap > 0) {
@@ -42,7 +42,7 @@ function createParty({ messageId, channelId, leaderId, activity, time, note, nes
     activity,
     time: time || null,
     note: note || null,
-    nestType: nestType || null,
+    dungeonInfo: dungeonInfo || null,
     roles,
     createdAt: Date.now(),
   };
@@ -77,10 +77,10 @@ function rekeyParty(oldMessageId, newMessageId) {
 
 // Adds a user to a role, removing them from any other role in the same
 // party first (a member can only hold one role at a time). Each member is
-// stored as { userId, subclass } — subclass is null for roles that don't
-// have subclass choices defined.
+// stored as { userId, ign, subclass } — subclass is null for roles that
+// don't have subclass choices defined.
 // Returns a status string: "joined" | "full" | "no-such-role"
-function joinRole(messageId, userId, roleKey, subclass = null) {
+function joinRole(messageId, userId, roleKey, subclass = null, ign = null) {
   const party = parties.get(messageId);
   if (!party) return "no-such-party";
   const role = party.roles[roleKey];
@@ -89,7 +89,7 @@ function joinRole(messageId, userId, roleKey, subclass = null) {
   removeMember(messageId, userId); // clear any existing signup first
 
   if (role.members.length >= role.cap) return "full";
-  role.members.push({ userId, subclass });
+  role.members.push({ userId, ign, subclass });
   return "joined";
 }
 
